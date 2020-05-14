@@ -1,5 +1,4 @@
 import collections
-import itertools
 import os
 import tempfile
 import urllib.request
@@ -8,6 +7,7 @@ from typing import Callable, Text, Union
 
 import hypothesis.extra.numpy
 import hypothesis.strategies
+import itertools
 import jax
 import jax.numpy as np
 import jax.scipy
@@ -148,6 +148,7 @@ class FixedPointTestCase(jax.test_util.JaxTestCase):
         solver = self.make_solver(param_ax_plus_b)
 
         def loss(x, params): return np.sum(solver(x, params).value)
+
         jax.test_util.check_grads(
             loss,
             (x0, (matrix, offset),),
@@ -324,7 +325,7 @@ def _parse_optimal_solution(python_code, skipped):
         if "! best known objective =" in comment:
             _, optimal_solution = comment.split("=")
 
-            python_code += f"\toptimal_solution = -array({optimal_solution.strip()})\n"
+            python_code += f"optimal_solution = -array({optimal_solution.strip()})\n"
             break
     else:
         raise ValueError("No solution found")
@@ -341,8 +342,14 @@ def _parse_equations(model_struct, python_code, var_sizes):
             equation = "-(" + equation + ")"
 
             cost_function = text_to_code(variable, equation, var_sizes)
-            cost_function = cost_function.replace("obj =", "objective_function =")
+            cost_function = cost_function.replace("obj =", "_objective_function =")
             python_code += f"\t{cost_function}\n"
+
+    python_code += f"""
+    @classmethod
+    def objective_function(cls, x):
+    \treturn cls._objective_function(x)
+    """
     return python_code
 
 
@@ -389,9 +396,10 @@ def parse_HockSchittkowski_models(test_folder):  # noqa
         os.makedirs(test_folder, exist_ok=True)
 
     with open(os.path.join(test_folder, "HockSchittkowski.py"), "w") as test_definitions:
-        test_definitions.write("from jax.numpy import *\n\n\n")
+        test_definitions.write("from jax.numpy import *\n")
+        test_definitions.write("from jax import jit\n\n\n")
         test_definitions.write("class Hs:\n")
-        test_definitions.write("    constraints = lambda: 0\n\n\n")
+        test_definitions.write("    constraints = lambda x: zeros_like(x)\n\n\n")
 
         with zipfile.ZipFile(zip_file_path) as test_archive:
             for test_case_path in test_archive.filelist:

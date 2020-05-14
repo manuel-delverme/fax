@@ -17,11 +17,12 @@ from fax.constrained import make_lagrangian
 
 jax.config.update("jax_enable_x64", True)
 test_params = dict(rtol=1e-4, atol=1e-4, check_dtypes=False)
-convergence_params = dict(rtol=1e-5, atol=1e-5)
+convergence_params = dict(rtol=1e-7, atol=1e-7)
 benchmark = list(fax.test_util.load_HockSchittkowski_models())
 
 if fax.config.DEBUG:
-    benchmark = [b for b in benchmark if 'Hs09' in repr(b[0])]
+    benchmark = [b for b in benchmark if 'Hs06' in repr(b[-1])]
+benchmark = [b for b in benchmark if 'Hs06' in repr(b[-1])]
 
 """
 class CGATest(jax.test_util.JaxTestCase):
@@ -135,6 +136,33 @@ class CGATest(jax.test_util.JaxTestCase):
 """
 
 
+def eg_solve(lagrangian, convergence_test, equality_constraints, objective_function, get_x, initial_values, max_iter=100000000, metrics=None):
+    optimizer_init, optimizer_update, optimizer_get_params = extragradient.adam_extragradient_optimizer(
+        step_size=jax.experimental.optimizers.inverse_time_decay(1e-1, 500, 0.3, staircase=True),
+        # step_size_y=jax.experimental.optimizers.inverse_time_decay(5e-2, 500, 0.1, staircase=True),
+    )
+
+    @jax.jit
+    def update(i, opt_state):
+        grad_fn = jax.grad(lagrangian, (0, 1))
+        return optimizer_update(i, grad_fn, opt_state)
+
+    fixpoint_fn = fax.loop._debug_fixed_point_iteration if fax.config.DEBUG else fax.loop.fixed_point_iteration
+    solution = fixpoint_fn(
+        init_x=optimizer_init(initial_values),
+        func=update,
+        convergence_test=convergence_test,
+        max_iter=max_iter,
+        get_params=optimizer_get_params,
+        metrics=metrics,
+    )
+    x, multipliers = get_x(solution)
+    final_val = objective_function(x)
+    h = equality_constraints(x)
+    print("iters", solution.iterations)
+    return final_val, h, x, multipliers
+
+
 class EGTest(jax.test_util.JaxTestCase):
     def DISABLED_test_eg_lagrange_min(self):
         objective_function, equality_constraints, _, opt_val = fax.test_util.constrained_opt_problem(n=5)
@@ -150,7 +178,7 @@ class EGTest(jax.test_util.JaxTestCase):
         def maximize_lagrangian(*args):
             return -lagrangian(*args)
 
-        final_val, h, x, _ = self.eg_solve(maximize_lagrangian, convergence_test, equality_constraints, objective_function, get_x, initial_values)
+        final_val, h, x, _ = eg_solve(maximize_lagrangian, convergence_test, equality_constraints, objective_function, get_x, initial_values)
 
         print('val', opt_val, final_val)
         self.assertAllClose(opt_val, final_val, **test_params)
@@ -172,7 +200,7 @@ class EGTest(jax.test_util.JaxTestCase):
         x0 = initial_value()
         initial_values = init_mult(x0)
 
-        final_val, h, x, multiplier = self.eg_solve(lagrangian, convergence_test, equality_constraints, objective_function, get_x, initial_values)
+        final_val, h, x, multiplier = eg_solve(lagrangian, convergence_test, equality_constraints, objective_function, get_x, initial_values)
 
         import scipy.optimize
         cons = (
@@ -189,37 +217,6 @@ class EGTest(jax.test_util.JaxTestCase):
         print(f"constraint: {h} (ours) {scipy_constraint} (scipy)")
         self.assertAllClose(final_val, scipy_optimal_value, **test_params)
         self.assertAllClose(h, scipy_constraint, **test_params)
-
-    def eg_solve(self, lagrangian, convergence_test, equality_constraints, objective_function, get_x, initial_values):
-        # optimizer_init, optimizer_update, optimizer_get_params = extragradient.rprop_extragradient_optimizer(
-        #     step_size_x=1e-2,
-        #     step_size_y=1e-3,
-        # )
-
-        optimizer_init, optimizer_update, optimizer_get_params = extragradient.adam_extragradient_optimizer(
-            step_size_x=jax.experimental.optimizers.inverse_time_decay(1e-1, 50, 0.3, staircase=True),
-            step_size_y=5e-2,
-            # step_size_y=jax.experimental.optimizers.inverse_time_decay(1e-3, 50, 0.3, staircase=False),
-        )
-
-        @jax.jit
-        def update(i, opt_state):
-            grad_fn = jax.grad(lagrangian, (0, 1))
-            return optimizer_update(i, grad_fn, opt_state)
-
-        fixpoint_fn = fax.loop._debug_fixed_point_iteration if fax.config.DEBUG else fax.loop.fixed_point_iteration
-        solution = fixpoint_fn(
-            init_x=optimizer_init(initial_values),
-            func=update,
-            convergence_test=convergence_test,
-            max_iter=100000000,
-            get_params=optimizer_get_params,
-            f=lagrangian,
-        )
-        x, multipliers = get_x(solution)
-        final_val = objective_function(x)
-        h = equality_constraints(x)
-        return final_val, h, x, multipliers
 
 
 if __name__ == "__main__":

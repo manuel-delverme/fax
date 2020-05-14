@@ -116,3 +116,12 @@ venv.bak/
 !/fax.egg-info/
 !/jax_fixedpoint.egg-info/
 !/venv/
+.idea/.gitignore
+.idea/NullSpaceExploration.iml
+.idea/inspectionProfiles/
+.idea/misc.xml
+.idea/modules.xml
+.idea/vcs.xml
+Elephant/README.md
+Elephant/approximate_house.py
+Elephant/elephant.py

@@ -2,26 +2,24 @@
 """
 import collections
 
-from scipy.optimize import minimize
-
 import jax
-from jax import lax
-from jax import jit
+import jax.numpy as np
 from jax import grad
 from jax import jacrev
-import jax.numpy as np
+from jax import jit
+from jax import lax
 from jax import tree_util
 from jax.experimental import optimizers
 from jax.flatten_util import ravel_pytree
+from scipy.optimize import minimize
 
-from fax import math
 from fax import converge
+from fax import math
 from fax.competitive import cg
 from fax.competitive import cga
-from fax.loop import fixed_point_iteration
 from fax.implicit.twophase import make_adjoint_fixed_point_iteration
 from fax.implicit.twophase import make_forward_fixed_point_iteration
-
+from fax.loop import fixed_point_iteration
 
 ConstrainedSolution = collections.namedtuple(
     "ConstrainedSolution",
@@ -76,6 +74,7 @@ def implicit_ecp(
             `sol.value=func(sol.previous_value)` and allows us to log the size
             of the last step if desired.
     """
+
     def _objective(*args):
         return -objective(*args)
 
@@ -83,6 +82,7 @@ def implicit_ecp(
         def _fp_operator(i, x):
             del i
             return x + equality_constraints(x, params)
+
         return _fp_operator
 
     constraints_solver = make_forward_fixed_point_iteration(
@@ -145,6 +145,7 @@ def make_lagrangian(func, equality_constraints):
     Returns:
         tuple: Triple of callables (init_multipliers, lagrangian, get_params)
     """
+
     def init_multipliers(params, *args, **kwargs):
         h = jax.eval_shape(equality_constraints, params, *args, **kwargs)
         multipliers = tree_util.tree_map(lambda x: np.zeros(x.shape, x.dtype), h)
@@ -194,6 +195,7 @@ def cga_lagrange_min(lagrangian, lr_func, lr_multipliers=None,
     Returns:
         tuple: Triple of callables  `(lagrange_init, lagrange_update, get_params)`
     """
+
     def neg_lagrangian(*args, **kwargs):
         return -lagrangian(*args, **kwargs)
 
@@ -288,6 +290,7 @@ def cga_ecp(
             `sol.value=func(sol.previous_value)` and allows us to log the size
             of the last step if desired.
     """
+
     def _objective(variables):
         return -objective(*variables)
 
@@ -357,12 +360,21 @@ def slsqp_ecp(objective, equality_constraints, initial_values, max_iter=500, fto
 
     @jit
     def jacobian_constraints(variables):
-        return jacrev(_equality_constraints)(variables)
+        a = jacrev(_equality_constraints)
+        # print(*unravel(a))
+        b = a(variables)
+        # print(b > 1e-7)
+        return b
 
-    options = {'maxiter': max_iter, 'ftol': ftol}
+    options = {'maxiter': max_iter, 'ftol': ftol, 'disp': True}
     constraints = ({'type': 'eq', 'fun': _equality_constraints, 'jac': jacobian_constraints})
+
+    cb = None
+    # def cb(*x):
+    #     print(x)
+
     solution = minimize(_objective, flat_initial_values, method='SLSQP',
-                        constraints=constraints, options=options, jac=gradfun_objective)
+                        constraints=constraints, options=options, jac=gradfun_objective, callback=cb)
 
     return ConstrainedSolution(
         value=unravel(solution.x), iterations=solution.nit, converged=solution.success)
