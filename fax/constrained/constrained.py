@@ -348,11 +348,13 @@ def slsqp_ecp(objective, equality_constraints, initial_values, max_iter=500, fto
     @jit
     def _objective(variables):
         unraveled = unravel(variables)
-        return -objective(*unraveled)
+        return -objective(unraveled)
 
     @jit
     def _equality_constraints(variables):
-        return np.ravel(equality_constraints(*unravel(variables)))
+        ins = unravel(variables)
+        outs = equality_constraints(ins)
+        return np.ravel(outs)
 
     @jit
     def gradfun_objective(variables):
@@ -376,5 +378,4 @@ def slsqp_ecp(objective, equality_constraints, initial_values, max_iter=500, fto
     solution = minimize(_objective, flat_initial_values, method='SLSQP',
                         constraints=constraints, options=options, jac=gradfun_objective, callback=cb)
 
-    return ConstrainedSolution(
-        value=unravel(solution.x), iterations=solution.nit, converged=solution.success)
+    return ConstrainedSolution(value=unravel(solution.x), iterations=solution.nit, converged=solution.success)

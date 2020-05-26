@@ -154,38 +154,23 @@ def fixed_point_iteration(init_x, func, convergence_test, max_iter, batched_iter
 
 
 def _debug_fixed_point_iteration(init_x, func, convergence_test, max_iter, batched_iter_size=1,
-                                 unroll=False, metrics=None, get_params=lambda x: x) -> FixedPointSolution:
+                                 unroll=False, metrics=(), get_params=lambda x: x) -> FixedPointSolution:
     func = jax.jit(func)
-    # max_iter = 260
-
-    xs = []
-    ys = []
-    js = []
 
     def while_loop(cond_fun, body_fun, init_vals):
         loop_state = init_vals
 
         iterations, (x_new, _optimizer_state), prev_sol = loop_state
-        # player_x_new, player_y_new = x_new
 
-        # xs.append(player_x_new)
-        # ys.append(player_y_new)
-        if metrics is not None:
-            for idx, f in enumerate(metrics):
-                config.tb.add_scalar(f"metrics {idx}", f(*x_new))
+        for tag, f in metrics:
+            config.tb.add_scalar(tag, f(*x_new), iterations)
 
         while True:
             loop_state = body_fun(loop_state)
             iterations, (x_new, _optimizer_state), prev_sol = loop_state
-            # if iterations % 100 == 0 and iterations < 1000 or (iterations % 400 == 0):
-            #     plot_process(js, xs, ys)
-            # player_x_new, player_y_new = x_new
 
-            # xs.append(player_x_new)
-            # ys.append(player_y_new)
-            if metrics is not None:
-                for idx, f in enumerate(metrics):
-                    config.tb.add_scalar(f"metrics {idx}", f(*x_new))
+            for tag, f in metrics:
+                config.tb.add_scalar(tag, f(*x_new), iterations)
 
             if not cond_fun(loop_state):
                 return loop_state
@@ -196,34 +181,4 @@ def _debug_fixed_point_iteration(init_x, func, convergence_test, max_iter, batch
     solution = fixed_point_iteration(init_x, func, convergence_test, max_iter, batched_iter_size, unroll, get_params)
 
     jax.lax.while_loop = jax_while_loop
-
-    # plot_process(js, xs, ys)
     return solution
-
-
-def plot_process(js, xs, ys):
-    import matplotlib.pyplot as plt
-    # plt.grid(True)
-    # xs = np.array(xs)
-    ts = np.arange(len(xs))
-    # plt.title("xs")
-    # plt.plot(ts, xs)
-    # plt.scatter(np.zeros_like(xs), xs)
-    # plt.show()
-    # plt.title("ys")
-    # plt.plot(ts, ys)
-    # plt.show()
-    if js:
-        fig, ax1 = plt.subplots()
-        ax1.set_xlabel('time (iter)')
-        plt.title("js")
-        colors = iter(('tab:orange', 'tab:blue'))
-        for idx, metric in enumerate(zip(*js)):
-            color = next(colors)
-            ax1.set_ylabel(f"j{idx}", color=color)
-            ax1.plot(ts, metric, color=color)
-            ax1.tick_params(axis='y')
-            ax1 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
-
-        fig.tight_layout()  # otherwise the right y-label is slightly clipped
-    plt.show()

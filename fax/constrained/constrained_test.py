@@ -136,9 +136,12 @@ class CGATest(jax.test_util.JaxTestCase):
 """
 
 
-def eg_solve(lagrangian, convergence_test, equality_constraints, objective_function, get_x, initial_values, max_iter=100000000, metrics=None):
+def eg_solve(lagrangian, convergence_test, equality_constraints, objective_function, get_x, initial_values, max_iter=100000000, metrics=(), lr=None):
+    if lr is None:
+        lr = jax.experimental.optimizers.inverse_time_decay(1e-1, 500, 0.3, staircase=True)
+
     optimizer_init, optimizer_update, optimizer_get_params = extragradient.adam_extragradient_optimizer(
-        step_size=jax.experimental.optimizers.inverse_time_decay(1e-1, 500, 0.3, staircase=True),
+        step_size=lr
         # step_size_y=jax.experimental.optimizers.inverse_time_decay(5e-2, 500, 0.1, staircase=True),
     )
 
@@ -159,7 +162,7 @@ def eg_solve(lagrangian, convergence_test, equality_constraints, objective_funct
     x, multipliers = get_x(solution)
     final_val = objective_function(x)
     h = equality_constraints(x)
-    print("iters", solution.iterations)
+    # print("iters", solution.iterations)
     return final_val, h, x, multipliers
 
 
