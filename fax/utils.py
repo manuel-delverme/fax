@@ -5,5 +5,5 @@ import jax.numpy as np
 #     return np.maximum(x, 0)
 
 
-def relu(x):
+def leaky_relu(x):
     return np.maximum(x, 0.001 * x)

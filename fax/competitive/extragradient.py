@@ -150,12 +150,12 @@ def adam_extragradient_optimizer(step_size, betas=(0.3, 0.99), eps=1e-8) -> (Cal
         step_sizes = step_size(step)
 
         (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, x0, y0, step)
-        xbar = sub(x0, delta_x)
-        ybar = add(y0, delta_y)
+        xbar = x0 - delta_x
+        ybar = y0 + delta_y
 
         (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, xbar, ybar, step)
-        x1 = sub(x0, delta_x)
-        y1 = add(y0, delta_y)
+        x1 = x0 - delta_x
+        y1 = y0 + delta_y
         return (x1, y1), grad_state
 
     def get_params(state):
@@ -195,37 +195,20 @@ def sign_adaptive_step(step_size, grads_fn, grad_state, x, y, i, use_rprop=True)
 def adam_step(betas, eps, step_sizes, grads_fn, grad_state, x, y, step):
     exp_avg, exp_avg_sq = grad_state
     beta1, beta2 = betas
-
-    # step_size_x, step_size_y = step_sizes
-
-    # grad_x0, grad_y0 = grads_fn(x, y)
     grads = grads_fn(x, y)
 
-    # beta2 = np.concatenate((np.ones_like(grad_x0), np.zeros_like(grad_y0))) * beta2
-
     if config.gradient_noise:
-        # eps_err = 10E-2  # from 1e-12 to -2
-        # ro = onp.random.randn(*grad_x0.shape)
-        # f(xk)(1 +eps_err(2 * ro −1))
         def add_noise(a):
             noise_factor = (1 + 10E-2 * (2 * onp.random.random(*a.shape) - 1))
             return a * noise_factor
-
         grads = tree_util.tree_map(add_noise, grads)
-        # grad_y0 += onp.random.randn(*grad_y0.shape) / 10
-
-    # grads = grad_x0, grad_y0
 
     bias_correction1 = 1 - beta1 ** (step + 1)
     bias_correction2 = 1 - beta2 ** (step + 1)
 
-    # beta1 = beta1 ** (step + 1)
-    # beta2 = beta2 ** (step + 1)
-
     def make_exp_smoothing(beta):
         def exp_smoothing(state, var):
             return state * beta + (1 - beta) * var
-
         return exp_smoothing
 
     exp_avg = tree_util.tree_multimap(make_exp_smoothing(beta1), exp_avg, grads)

@@ -137,11 +137,7 @@ def fixed_point_iteration(init_x, func, convergence_test, max_iter, batched_iter
             )
         converged = convergence_test(sol, prev_sol)
     else:
-        iterations, sol, prev_sol = jax.lax.while_loop(
-            cond,
-            body,
-            init_vals,
-        )
+        iterations, sol, prev_sol = jax.lax.while_loop(cond, body, init_vals)
         sol, prev_sol = get_params(sol), get_params(prev_sol)
         converged = max_iter is None or iterations < max_iter
 
@@ -153,9 +149,11 @@ def fixed_point_iteration(init_x, func, convergence_test, max_iter, batched_iter
     )
 
 
+
 def _debug_fixed_point_iteration(init_x, func, convergence_test, max_iter, batched_iter_size=1,
                                  unroll=False, metrics=(), get_params=lambda x: x) -> FixedPointSolution:
     func = jax.jit(func)
+    history = collections.defaultdict(list)
 
     def while_loop(cond_fun, body_fun, init_vals):
         loop_state = init_vals
@@ -163,7 +161,9 @@ def _debug_fixed_point_iteration(init_x, func, convergence_test, max_iter, batch
         iterations, (x_new, _optimizer_state), prev_sol = loop_state
 
         for tag, f in metrics:
-            config.tb.add_scalar(tag, f(*x_new), iterations)
+            fx = float(f(*x_new))
+            config.tb.add_scalar(tag, fx, iterations)
+            history[tag].append(fx)
 
         while True:
             loop_state = body_fun(loop_state)
@@ -171,7 +171,9 @@ def _debug_fixed_point_iteration(init_x, func, convergence_test, max_iter, batch
 
             if iterations % 100 == 0:
                 for tag, f in metrics:
-                    config.tb.add_scalar(tag, f(*x_new), iterations)
+                    fx = float(f(*x_new))
+                    config.tb.add_scalar(tag, fx, iterations)
+                    history[tag].append(fx)
 
             if not cond_fun(loop_state):
                 return loop_state
@@ -182,4 +184,4 @@ def _debug_fixed_point_iteration(init_x, func, convergence_test, max_iter, batch
     solution = fixed_point_iteration(init_x, func, convergence_test, max_iter, batched_iter_size, unroll, get_params)
 
     jax.lax.while_loop = jax_while_loop
-    return solution
+    return solution, history

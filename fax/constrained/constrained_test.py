@@ -136,7 +136,7 @@ class CGATest(jax.test_util.JaxTestCase):
 """
 
 
-def eg_solve(lagrangian, convergence_test, equality_constraints, objective_function, get_x, initial_values, max_iter=100000000, metrics=(), lr=None):
+def eg_solve(lagrangian, convergence_test, get_x, initial_values, max_iter=100000000, metrics=(), lr=None):
     if lr is None:
         lr = jax.experimental.optimizers.inverse_time_decay(1e-1, 500, 0.3, staircase=True)
 
@@ -151,7 +151,7 @@ def eg_solve(lagrangian, convergence_test, equality_constraints, objective_funct
         return optimizer_update(i, grad_fn, opt_state)
 
     fixpoint_fn = fax.loop._debug_fixed_point_iteration if fax.config.DEBUG else fax.loop.fixed_point_iteration
-    solution = fixpoint_fn(
+    solution, history = fixpoint_fn(
         init_x=optimizer_init(initial_values),
         func=update,
         convergence_test=convergence_test,
@@ -160,10 +160,7 @@ def eg_solve(lagrangian, convergence_test, equality_constraints, objective_funct
         metrics=metrics,
     )
     x, multipliers = get_x(solution)
-    final_val = objective_function(x)
-    h = equality_constraints(x)
-    # print("iters", solution.iterations)
-    return final_val, h, x, multipliers
+    return x, multipliers, history
 
 
 class EGTest(jax.test_util.JaxTestCase):
