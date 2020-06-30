@@ -1,10 +1,7 @@
 from typing import Callable
 
 import jax.experimental.optimizers
-import numpy as onp
 from jax import np, tree_util, lax
-
-from fax import config
 
 
 def division_constant(constant):
@@ -197,18 +194,13 @@ def adam_step(betas, eps, step_sizes, grads_fn, grad_state, x, y, step):
     beta1, beta2 = betas
     grads = grads_fn(x, y)
 
-    if config.gradient_noise:
-        def add_noise(a):
-            noise_factor = (1 + 10E-2 * (2 * onp.random.random(*a.shape) - 1))
-            return a * noise_factor
-        grads = tree_util.tree_map(add_noise, grads)
-
     bias_correction1 = 1 - beta1 ** (step + 1)
     bias_correction2 = 1 - beta2 ** (step + 1)
 
     def make_exp_smoothing(beta):
         def exp_smoothing(state, var):
             return state * beta + (1 - beta) * var
+
         return exp_smoothing
 
     exp_avg = tree_util.tree_multimap(make_exp_smoothing(beta1), exp_avg, grads)
