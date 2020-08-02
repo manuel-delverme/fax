@@ -5,8 +5,6 @@ import jax
 import jax.lax
 import jax.numpy as np
 
-import config
-
 FixedPointSolution = collections.namedtuple(
     "FixedPointSolution",
     "value converged iterations previous_value"
@@ -40,7 +38,7 @@ def unrolled(i, init_x, func, num_iter, return_last_two=False):
         return i, x
 
 
-def fixed_point_iteration(init_x, func, convergence_test, max_iter, batched_iter_size=1, unroll=False, get_params=lambda x: x, metrics=None) -> FixedPointSolution:
+def fixed_point_iteration(init_x, func, convergence_test, max_iter, batched_iter_size=1, unroll=False, get_params=lambda x: x) -> FixedPointSolution:
     """Find a fixed point of `func` by repeatedly applying `func`.
 
     Use this function to find a fixed point of `func` by repeatedly applying
@@ -149,31 +147,31 @@ def fixed_point_iteration(init_x, func, convergence_test, max_iter, batched_iter
     )
 
 
-
 def _debug_fixed_point_iteration(init_x, func, convergence_test, max_iter, batched_iter_size=1,
                                  unroll=False, metrics=(), get_params=lambda x: x) -> FixedPointSolution:
     func = jax.jit(func)
-    history = collections.defaultdict(list)
+
+    # history = collections.defaultdict(list)
 
     def while_loop(cond_fun, body_fun, init_vals):
         loop_state = init_vals
 
         iterations, (x_new, _optimizer_state), prev_sol = loop_state
 
-        for tag, f in metrics:
-            fx = float(f(*x_new))
-            config.tb.add_scalar(tag, fx, iterations)
-            history[tag].append(fx)
+        # for tag, f in metrics:
+        #     fx = float(f(*x_new))
+        #     config.tb.add_scalar(tag, fx, iterations)
+        #     history[tag].append(fx)
 
         while True:
             loop_state = body_fun(loop_state)
             iterations, (x_new, _optimizer_state), prev_sol = loop_state
 
-            if iterations % 100 == 0:
-                for tag, f in metrics:
-                    fx = float(f(*x_new))
-                    config.tb.add_scalar(tag, fx, iterations)
-                    history[tag].append(fx)
+            # if iterations % 100 == 0:
+            #     for tag, f in metrics:
+            #         fx = float(f(*x_new))
+            #         config.tb.add_scalar(tag, fx, iterations)
+            #         history[tag].append(fx)
 
             if not cond_fun(loop_state):
                 return loop_state
@@ -184,4 +182,4 @@ def _debug_fixed_point_iteration(init_x, func, convergence_test, max_iter, batch
     solution = fixed_point_iteration(init_x, func, convergence_test, max_iter, batched_iter_size, unroll, get_params)
 
     jax.lax.while_loop = jax_while_loop
-    return solution, history
+    return solution  # , history

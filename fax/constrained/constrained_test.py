@@ -30,17 +30,17 @@ def eg_solve(lagrangian, convergence_test, get_x, initial_values, max_iter=10000
         grad_fn = jax.grad(lagrangian, (0, 1))
         return optimizer_update(i, grad_fn, opt_state)
 
-    fixpoint_fn = fax.loop._debug_fixed_point_iteration  # fax.loop.fixed_point_iteration
-    solution, history = fixpoint_fn(
+    # solution = fax.loop.fixed_point_iteration(
+    solution = fax.loop._debug_fixed_point_iteration(
         init_x=optimizer_init(initial_values),
         func=update,
         convergence_test=convergence_test,
         max_iter=max_iter,
         get_params=optimizer_get_params,
-        metrics=metrics,
+        # metrics=metrics,
     )
     x, multipliers = get_x(solution)
-    return x, multipliers, history
+    return x, multipliers
 
 
 if __name__ == "__main__":
