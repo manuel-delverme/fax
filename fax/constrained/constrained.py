@@ -148,6 +148,8 @@ def make_lagrangian(func, equality_constraints):
 
     def init_multipliers(params, *args, **kwargs):
         h = jax.eval_shape(equality_constraints, params, *args, **kwargs)
+        if isinstance(h, list):
+            raise TypeError("use tuples")
         multipliers = tree_util.tree_map(lambda x: np.zeros(x.shape, x.dtype), h)
         return params, multipliers
 
