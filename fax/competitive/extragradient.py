@@ -120,24 +120,7 @@ def adam_extragradient_optimizer(step_size, betas=(0.3, 0.99), eps=1e-8) -> (Cal
     step_size = jax.experimental.optimizers.make_schedule(step_size)
 
     def init(init_values):
-        # Exponential moving average of squared gradient values
-
-        # model, multipliers = init_values
-
-        # h = jax.eval_shape(equality_constraints, params, *args, **kwargs)
-        # multipliers = tree_util.tree_map(lambda x: np.zeros(x.shape, x.dtype), model)
-
-        # assert len(x0.shape) == (len(y0.shape) == 1 or not y0.shape)
-        # model_params = np.hstack([mi.flatten() for mi in model])
-        # multipliers = multipliers.flatten()
-
-        # init_values = np.concatenate((model_params, multipliers))
-
-        # Exponential moving average of gradient values
-        # exp_avg = np.zeros_like(init_values)
         exp_avg = tree_util.tree_map(lambda x: np.zeros(x.shape, x.dtype), init_values)
-
-        # Exponential moving average of gradient values
         exp_avg_sq = tree_util.tree_map(lambda x: np.zeros(x.shape, x.dtype), init_values)
 
         return init_values, (exp_avg, exp_avg_sq)
@@ -149,20 +132,15 @@ def adam_extragradient_optimizer(step_size, betas=(0.3, 0.99), eps=1e-8) -> (Cal
         (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, x0, y0, step)
         xbar = x0 - delta_x
         ybar = y0 + delta_y
-        # xbar = tree_util.tree_multimap(lambda _a, _b: _a - _b, x0, delta_x)
-        # ybar = tree_util.tree_multimap(lambda _a, _b: _a + _b, y0, delta_y)
 
         (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, xbar, ybar, step)
-
         x1 = x0 - delta_x
         y1 = y0 + delta_y
-        # x1 = tree_util.tree_multimap(lambda _a, _b: _a - _b, x0, delta_x)
-        # y1 = tree_util.tree_multimap(lambda _a, _b: _a + _b, y0, delta_y)
 
         return (x1, y1), grad_state
 
     def get_params(state):
-        x, _ = state
+        x, _opt_state = state
         return x
 
     return init, update, get_params

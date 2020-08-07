@@ -150,7 +150,6 @@ def fixed_point_iteration(init_x, func, convergence_test, max_iter, batched_iter
 def _debug_fixed_point_iteration(init_x, func, convergence_test, max_iter, batched_iter_size=1,
                                  unroll=False, metrics=(), get_params=lambda x: x) -> FixedPointSolution:
     func = jax.jit(func)
-
     # history = collections.defaultdict(list)
 
     def while_loop(cond_fun, body_fun, init_vals):
