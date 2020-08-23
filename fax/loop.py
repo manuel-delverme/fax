@@ -156,21 +156,9 @@ def _debug_fixed_point_iteration(init_x, func, convergence_test, max_iter, batch
         loop_state = init_vals
 
         iterations, (x_new, _optimizer_state), prev_sol = loop_state
-
-        # for tag, f in metrics:
-        #     fx = float(f(*x_new))
-        #     config.tb.add_scalar(tag, fx, iterations)
-        #     history[tag].append(fx)
-
         while True:
             loop_state = body_fun(loop_state)
             iterations, (x_new, _optimizer_state), prev_sol = loop_state
-
-            # if iterations % 100 == 0:
-            #     for tag, f in metrics:
-            #         fx = float(f(*x_new))
-            #         config.tb.add_scalar(tag, fx, iterations)
-            #         history[tag].append(fx)
 
             if not cond_fun(loop_state):
                 return loop_state

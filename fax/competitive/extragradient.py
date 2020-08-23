@@ -1,7 +1,8 @@
 from typing import Callable
 
 import jax.experimental.optimizers
-from jax import np, tree_util, lax
+from jax import numpy as np
+from jax import tree_util, lax
 
 
 def division_constant(constant):
@@ -91,6 +92,8 @@ def rprop_extragradient_optimizer(step_size_x, step_size_y, proj_x=lambda x: x, 
     return init, update, get_params
 
 
+# cannot be used because it requires grad in signature (instead of grad_fn)
+# @jax.experimental.optimizers.optimizer
 def adam_extragradient_optimizer(step_size, betas=(0.3, 0.99), eps=1e-8) -> (Callable, Callable, Callable):
     """Provides an optimizer interface to the extra-gradient method
 
