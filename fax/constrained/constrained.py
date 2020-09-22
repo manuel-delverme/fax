@@ -150,16 +150,20 @@ def make_lagrangian(func, equality_constraints):
         h, _ = jax.eval_shape(equality_constraints, params, *args, **kwargs)
         if isinstance(h, list):
             raise TypeError("use tuples")
-        multipliers = tree_util.tree_map(lambda x: np.zeros((params.x[0].shape[0], *x.shape[1:]), x.dtype), h)
+        # multipliers = tree_util.tree_map(lambda x: np.zeros((params.x[0].shape[0], *x.shape[1:]), x.dtype), h)
+        multipliers = tree_util.tree_map(lambda x: np.zeros(x.shape, x.dtype), h)
         return params, multipliers
 
-    def lagrangian(params, multipliers, *args, **kwargs):
-        h, indices = equality_constraints(params, *args, **kwargs)
-        augmented = 0.1
-        if augmented > 0:
-            return -func(params, *args, **kwargs) + math.pytree_dot(multipliers[indices], h) + augmented * math.pytree_dot(h, h)
-        else:
-            return -func(params, *args, **kwargs) + math.pytree_dot(multipliers[indices], h)
+    def lagrangian(params, multipliers):
+        obj, task = func(params)
+        h, _task = equality_constraints(params, task)
+        indices = task[-1]
+        rhs = []
+        # regul = 0.
+        for mi, hi in zip(multipliers, h):
+            rhs.append(math.pytree_dot(mi[indices, :], hi))
+            # regul += np.linalg.norm(hi, 2)
+        return obj + np.sum(rhs)  # + regul
 
     def get_params(opt_state):
         return opt_state[0]

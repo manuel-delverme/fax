@@ -94,7 +94,7 @@ def rprop_extragradient_optimizer(step_size_x, step_size_y, proj_x=lambda x: x, 
 
 # cannot be used because it requires grad in signature (instead of grad_fn)
 # @jax.experimental.optimizers.optimizer
-def adam_extragradient_optimizer(step_size, betas=(0.3, 0.99), eps=1e-8) -> (Callable, Callable, Callable):
+def adam_extragradient_optimizer(step_size, betas=(0.5, 0.99), weight_norm=0.1, eps=1e-8) -> (Callable, Callable, Callable):
     """Provides an optimizer interface to the extra-gradient method
 
     We are trying to find a pair (x*, y*) such that:
@@ -132,13 +132,15 @@ def adam_extragradient_optimizer(step_size, betas=(0.3, 0.99), eps=1e-8) -> (Cal
         (x0, y0), grad_state = state
         step_sizes = step_size(step)
 
-        (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, x0, y0, step)
-        xbar = x0 - delta_x
-        ybar = y0 + delta_y
+        (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, x0, y0, step, weight_norm)
+        # xbar = x0 - delta_x
+        xbar = sub(x0, delta_x)
+        ybar = add(y0, delta_y)
 
-        (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, xbar, ybar, step)
-        x1 = x0 - delta_x
-        y1 = y0 + delta_y
+        (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, xbar, ybar, step, weight_norm)
+        # x1 = x0 - delta_x
+        x1 = sub(x0, delta_x)
+        y1 = add(y0, delta_y)
 
         return (x1, y1), grad_state
 
@@ -176,10 +178,11 @@ def sign_adaptive_step(step_size, grads_fn, grad_state, x, y, i, use_rprop=True)
     return delta_x, delta_y, grad_state
 
 
-def adam_step(betas, eps, step_sizes, grads_fn, grad_state, x, y, step):
+def adam_step(betas, eps, step_sizes, grads_fn, grad_state, x, y, step, weight_norm):
     exp_avg, exp_avg_sq = grad_state
     beta1, beta2 = betas
-    grads = grads_fn(x, y)
+    (gx, gy) = grads_fn(x, y)
+    grads = (gx + multiply_constant(weight_norm)(x), gy)
 
     bias_correction1 = 1 - beta1 ** (step + 1)
     bias_correction2 = 1 - beta2 ** (step + 1)
@@ -192,6 +195,90 @@ def adam_step(betas, eps, step_sizes, grads_fn, grad_state, x, y, step):
 
     exp_avg = tree_util.tree_multimap(make_exp_smoothing(beta1), exp_avg, grads)
     exp_avg_sq = tree_util.tree_multimap(make_exp_smoothing(beta2), exp_avg_sq, square(grads))
+
+    corrected_moment = division_constant(bias_correction1)(exp_avg)
+    corrected_second_moment = division_constant(bias_correction2)(exp_avg_sq)
+
+    denom = tree_util.tree_multimap(lambda _var: np.sqrt(_var) + eps, corrected_second_moment)
+    step_improvement = division(corrected_moment, denom)
+    delta = multiply_constant(step_sizes)(step_improvement)
+
+    grad_state = exp_avg, exp_avg_sq
+    return delta, grad_state
+
+
+def adam_extragradient_optimizer_1d(step_size, betas=(0.5, 0.99), eps=1e-8) -> (Callable, Callable, Callable):
+    """Provides an optimizer interface to the extra-gradient method
+
+    We are trying to find a pair (x*, y*) such that:
+
+    f(x*, y) ≤ f(x*, y*) ≤ f(x, y*), ∀ x ∈ X, y ∈ Y
+
+    where X and Y are closed convex sets.
+
+    Args:
+        init_values:
+        step_size_x (float): x learning rate,
+        step_size_y: (float): y learning rate,
+        f: Saddle-point function
+        convergence_test:  TODO
+        max_iter:  TODO
+        batched_iter_size:  TODO
+        unroll:  TODO
+
+        betas (Tuple[float, float]): coefficients used for computing running averages of gradient and its square.
+        eps (float, optional): term added to the denominator to improve numerical stability (default: 1e-8)
+        weight_decay (float, optional): weight decay (L2 penalty) (default: 0)
+        ams_grad (boolean, optional): whether to use the AMSGrad variant of this algorithm from the paper `On the Convergence of Adam and Beyond`_
+
+    """
+
+    step_size = jax.experimental.optimizers.make_schedule(step_size)
+
+    def init(init_values):
+        exp_avg = tree_util.tree_map(lambda x: np.zeros(x.shape, x.dtype), init_values)
+        exp_avg_sq = tree_util.tree_map(lambda x: np.zeros(x.shape, x.dtype), init_values)
+
+        return init_values, (exp_avg, exp_avg_sq)
+
+    def update(step, grad_fns, state):
+        x0, grad_state = state
+        step_sizes = step_size(step)
+
+        delta_x, grad_state = adam_step_1d(betas, eps, step_sizes, grad_fns, grad_state, x0, step)
+        # xbar = x0 - delta_x
+        xbar = sub(x0, delta_x)
+        ybar = add(y0, delta_y)
+
+        delta_x, grad_state = adam_step_1d(betas, eps, step_sizes, grad_fns, grad_state, x0, step)
+        x1 = sub(x0, delta_x)
+        y1 = add(y0, delta_y)
+
+        return (x1, y1), grad_state
+
+    def get_params(state):
+        x, _opt_state = state
+        return x
+
+    return init, update, get_params
+
+
+def adam_step_1d(betas, eps, step_sizes, grad_fn, grad_state, x, step):
+    exp_avg, exp_avg_sq = grad_state
+    beta1, beta2 = betas
+    grad = grads_fn(x)
+
+    bias_correction1 = 1 - beta1 ** (step + 1)
+    bias_correction2 = 1 - beta2 ** (step + 1)
+
+    def make_exp_smoothing(beta):
+        def exp_smoothing(state, var):
+            return state * beta + (1 - beta) * var
+
+        return exp_smoothing
+
+    exp_avg = tree_util.tree_multimap(make_exp_smoothing(beta1), exp_avg, grad)
+    exp_avg_sq = tree_util.tree_multimap(make_exp_smoothing(beta2), exp_avg_sq, square(grad))
 
     corrected_moment = division_constant(bias_correction1)(exp_avg)
     corrected_second_moment = division_constant(bias_correction2)(exp_avg_sq)
