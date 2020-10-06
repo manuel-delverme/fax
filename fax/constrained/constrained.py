@@ -147,7 +147,7 @@ def make_lagrangian(func, equality_constraints):
     """
 
     def init_multipliers(params, *args, **kwargs):
-        h, _ = jax.eval_shape(equality_constraints, params, *args, **kwargs)
+        h = jax.eval_shape(equality_constraints, params, *args, **kwargs)
         if isinstance(h, list):
             raise TypeError("use tuples")
         # multipliers = tree_util.tree_map(lambda x: np.zeros((params.x[0].shape[0], *x.shape[1:]), x.dtype), h)
@@ -155,15 +155,14 @@ def make_lagrangian(func, equality_constraints):
         return params, multipliers
 
     def lagrangian(params, multipliers):
-        obj, task = func(params)
-        h, _task = equality_constraints(params, task)
-        indices = task[-1]
+        loss = func(params)
+        h = equality_constraints(params)
         rhs = []
         # regul = 0.
         for mi, hi in zip(multipliers, h):
-            rhs.append(math.pytree_dot(mi[indices, :], hi))
+            rhs.append(math.pytree_dot(mi, hi))
             # regul += np.linalg.norm(hi, 2)
-        return obj + np.sum(rhs)  # + regul
+        return loss + np.sum(rhs)  # + regul
 
     def get_params(opt_state):
         return opt_state[0]

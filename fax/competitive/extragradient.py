@@ -94,7 +94,7 @@ def rprop_extragradient_optimizer(step_size_x, step_size_y, proj_x=lambda x: x, 
 
 # cannot be used because it requires grad in signature (instead of grad_fn)
 # @jax.experimental.optimizers.optimizer
-def adam_extragradient_optimizer(step_size, betas=(0.5, 0.99), weight_norm=0.1, eps=1e-8) -> (Callable, Callable, Callable):
+def adam_extragradient_optimizer(step_sizes, betas=(0.5, 0.99), weight_norm=0.0, eps=1e-8, use_adam=True) -> (Callable, Callable, Callable):
     """Provides an optimizer interface to the extra-gradient method
 
     We are trying to find a pair (x*, y*) such that:
@@ -120,7 +120,9 @@ def adam_extragradient_optimizer(step_size, betas=(0.5, 0.99), weight_norm=0.1, 
 
     """
 
-    step_size = jax.experimental.optimizers.make_schedule(step_size)
+    step_size_x, step_size_y = step_sizes
+    step_size_x = jax.experimental.optimizers.make_schedule(step_size_x)
+    step_size_y = jax.experimental.optimizers.make_schedule(step_size_y)
 
     def init(init_values):
         exp_avg = tree_util.tree_map(lambda x: np.zeros(x.shape, x.dtype), init_values)
@@ -130,18 +132,26 @@ def adam_extragradient_optimizer(step_size, betas=(0.5, 0.99), weight_norm=0.1, 
 
     def update(step, grad_fns, state):
         (x0, y0), grad_state = state
-        step_sizes = step_size(step)
+        step_sizes = step_size_x(step), step_size_y(step)
 
-        (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, x0, y0, step, weight_norm)
-        # xbar = x0 - delta_x
+        if use_adam:
+            (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, x0, y0, step, weight_norm)
+        else:
+            (delta_x, delta_y) = sgd_step(step_sizes, grad_fns, x0, y0, weight_norm)
+
         xbar = sub(x0, delta_x)
         ybar = add(y0, delta_y)
 
-        (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, xbar, ybar, step, weight_norm)
+        if use_adam:
+            (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, xbar, ybar, step, weight_norm)
+        else:
+            (delta_x, delta_y) = sgd_step(step_sizes, grad_fns, xbar, ybar, weight_norm)
+
         # x1 = x0 - delta_x
         x1 = sub(x0, delta_x)
         y1 = add(y0, delta_y)
 
+        # return (xbar, ybar), grad_state
         return (x1, y1), grad_state
 
     def get_params(state):
@@ -201,8 +211,14 @@ def adam_step(betas, eps, step_sizes, grads_fn, grad_state, x, y, step, weight_n
 
     denom = tree_util.tree_multimap(lambda _var: np.sqrt(_var) + eps, corrected_second_moment)
     step_improvement = division(corrected_moment, denom)
-    delta = multiply_constant(step_sizes)(step_improvement)
+    delta = multiply_constant(step_sizes[0])(step_improvement[0]), multiply_constant(step_sizes[1])(step_improvement[1])
 
     grad_state = exp_avg, exp_avg_sq
     return delta, grad_state
 
+
+def sgd_step(step_sizes, grads_fn, x, y, weight_norm):
+    gx, gy = grads_fn(x, y)
+    grads = (gx + multiply_constant(weight_norm)(x), gy)
+    delta = multiply_constant(step_sizes[0])(grads[0]), multiply_constant(step_sizes[1])(grads[1])
+    return delta
