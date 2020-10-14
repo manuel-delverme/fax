@@ -4,6 +4,8 @@ import jax.experimental.optimizers
 from jax import numpy as np
 from jax import tree_util, lax
 
+from utils import LagrangianParameters
+
 
 def division_constant(constant):
     def divide(a):
@@ -147,45 +149,15 @@ def adam_extragradient_optimizer(step_sizes, betas=(0.5, 0.99), weight_norm=0.0,
         else:
             (delta_x, delta_y) = sgd_step(step_sizes, grad_fns, xbar, ybar, weight_norm)
 
-        # x1 = x0 - delta_x
         x1 = sub(x0, delta_x)
         y1 = add(y0, delta_y)
-
-        # return (xbar, ybar), grad_state
         return (x1, y1), grad_state
 
     def get_params(state):
         x, _opt_state = state
-        return x
+        return LagrangianParameters(*x)
 
     return init, update, get_params
-
-
-def sign_adaptive_step(step_size, grads_fn, grad_state, x, y, i, use_rprop=True):
-    step_size_x, step_size_y = step_size
-
-    grad_x0, grad_y0 = grads_fn(x, y)
-    # the next part is to avoid ifs
-    #  d |  d + 1 |  d - 1
-    #  1 |    2   |    0
-    # -1 |    0   |   -2
-    if use_rprop:
-        eta_plus = 1.2
-        eta_minus = 0.5
-        grads = np.concatenate((grad_x0, grad_y0))
-        direction = np.sign(grad_state * grads)
-        step_improvement_rate = (direction + 1) * eta_plus / 2. + (1 - direction) * eta_minus / 2
-        eta_x = step_size_x * step_improvement_rate[:grad_x0.shape[0]]
-        eta_y = step_size_y * step_improvement_rate[grad_x0.shape[0]:]
-        grad_state = grads
-    else:
-        grad_state = None
-        eta_x = step_size_x
-        eta_y = step_size_y
-
-    delta_x = eta_x * grad_x0
-    delta_y = eta_y * grad_y0
-    return delta_x, delta_y, grad_state
 
 
 def adam_step(betas, eps, step_sizes, grads_fn, grad_state, x, y, step, weight_norm):

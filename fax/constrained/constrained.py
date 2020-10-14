@@ -1,6 +1,7 @@
 """ Optimization methods for parametric nonlinear equality constrained problems.
 """
 import collections
+from typing import Callable, Tuple
 
 import jax
 import jax.numpy as np
@@ -20,6 +21,7 @@ from fax.competitive import cga
 from fax.implicit.twophase import make_adjoint_fixed_point_iteration
 from fax.implicit.twophase import make_forward_fixed_point_iteration
 from fax.loop import fixed_point_iteration
+from utils import ConstrainedParameters, Batch
 
 ConstrainedSolution = collections.namedtuple(
     "ConstrainedSolution",
@@ -135,7 +137,7 @@ def implicit_ecp(
     )
 
 
-def make_lagrangian(func, equality_constraints):
+def make_lagrangian(func: Callable[[ConstrainedParameters], Tuple[float, Batch]], equality_constraints):
     """Make a Lagrangian function from an objective function `func` and `equality_constraints`
 
     Args:
@@ -147,22 +149,19 @@ def make_lagrangian(func, equality_constraints):
     """
 
     def init_multipliers(params, *args, **kwargs):
-        h = jax.eval_shape(equality_constraints, params, *args, **kwargs)
-        if isinstance(h, list):
-            raise TypeError("use tuples")
-        # multipliers = tree_util.tree_map(lambda x: np.zeros((params.x[0].shape[0], *x.shape[1:]), x.dtype), h)
+        h, _batch = jax.eval_shape(equality_constraints, params, *args, **kwargs)
         multipliers = tree_util.tree_map(lambda x: np.zeros(x.shape, x.dtype), h)
         return params, multipliers
 
     def lagrangian(params, multipliers):
-        loss = func(params)
-        h = equality_constraints(params)
+        loss, batch = func(params)
+        h, _batch = equality_constraints(params, batch)
+        indices = batch.indices
         rhs = []
-        # regul = 0.
+
         for mi, hi in zip(multipliers, h):
-            rhs.append(math.pytree_dot(mi, hi))
-            # regul += np.linalg.norm(hi, 2)
-        return loss + np.sum(rhs)  # + regul
+            rhs.append(math.pytree_dot(mi[indices, :], hi))
+        return loss + np.sum(rhs)
 
     def get_params(opt_state):
         return opt_state[0]
@@ -372,17 +371,13 @@ def slsqp_ecp(objective, equality_constraints, initial_values, max_iter=500, fto
     @jit
     def jacobian_constraints(variables):
         a = jacrev(_equality_constraints)
-        # print(*unravel(a))
         b = a(variables)
-        # print(b > 1e-7)
         return b
 
     options = {'maxiter': max_iter, 'ftol': ftol, 'disp': True}
     constraints = ({'type': 'eq', 'fun': _equality_constraints, 'jac': jacobian_constraints})
 
     cb = None
-    # def cb(*x):
-    #     print(x)
 
     solution = minimize(_objective, flat_initial_values, method='SLSQP',
                         constraints=constraints, options=options, jac=gradfun_objective, callback=cb)
