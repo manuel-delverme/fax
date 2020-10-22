@@ -96,7 +96,7 @@ def rprop_extragradient_optimizer(step_size_x, step_size_y, proj_x=lambda x: x, 
 
 # cannot be used because it requires grad in signature (instead of grad_fn)
 # @jax.experimental.optimizers.optimizer
-def adam_extragradient_optimizer(step_sizes, betas=(0.5, 0.99), weight_norm=0.0, eps=1e-8, use_adam=True) -> (Callable, Callable, Callable):
+def adam_extragradient_optimizer(step_sizes, betas=(0.5, 0.99), weight_norm=0.0, grad_clip=False, eps=1e-8, use_adam=True) -> (Callable, Callable, Callable):
     """Provides an optimizer interface to the extra-gradient method
 
     We are trying to find a pair (x*, y*) such that:
@@ -139,7 +139,7 @@ def adam_extragradient_optimizer(step_sizes, betas=(0.5, 0.99), weight_norm=0.0,
         if use_adam:
             (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, x0, y0, step, weight_norm)
         else:
-            (delta_x, delta_y) = sgd_step(step_sizes, grad_fns, x0, y0, weight_norm)
+            (delta_x, delta_y) = sgd_step(step_sizes, grad_fns, x0, y0, weight_norm, grad_clip)
 
         xbar = sub(x0, delta_x)
         ybar = add(y0, delta_y)
@@ -147,7 +147,7 @@ def adam_extragradient_optimizer(step_sizes, betas=(0.5, 0.99), weight_norm=0.0,
         if use_adam:
             (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, xbar, ybar, step, weight_norm)
         else:
-            (delta_x, delta_y) = sgd_step(step_sizes, grad_fns, xbar, ybar, weight_norm)
+            (delta_x, delta_y) = sgd_step(step_sizes, grad_fns, xbar, ybar, weight_norm, grad_clip)
 
         x1 = sub(x0, delta_x)
         y1 = add(y0, delta_y)
@@ -161,6 +161,7 @@ def adam_extragradient_optimizer(step_sizes, betas=(0.5, 0.99), weight_norm=0.0,
 
 
 def adam_step(betas, eps, step_sizes, grads_fn, grad_state, x, y, step, weight_norm):
+    raise NotImplemented("gradient clipping missing")
     exp_avg, exp_avg_sq = grad_state
     beta1, beta2 = betas
     (gx, gy) = grads_fn(x, y)
@@ -189,8 +190,11 @@ def adam_step(betas, eps, step_sizes, grads_fn, grad_state, x, y, step, weight_n
     return delta, grad_state
 
 
-def sgd_step(step_sizes, grads_fn, x, y, weight_norm):
-    gx, gy = grads_fn(x, y)
+def sgd_step(step_sizes, grads_fn, x, y, weight_norm, grad_clip):
+    grads = grads_fn(x, y)
+    if grad_clip:
+        grads = jax.experimental.optimizers.clip_grads(grads, grad_clip)
+    gx, gy = grads
     grads = (gx + multiply_constant(weight_norm)(x), gy)
     delta = multiply_constant(step_sizes[0])(grads[0]), multiply_constant(step_sizes[1])(grads[1])
     return delta
