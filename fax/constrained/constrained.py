@@ -1,7 +1,8 @@
 """ Optimization methods for parametric nonlinear equality constrained problems.
 """
 import collections
-from typing import Callable, Tuple
+import warnings
+from typing import Callable
 
 import jax
 import jax.numpy as np
@@ -14,6 +15,7 @@ from jax.experimental import optimizers
 from jax.flatten_util import ravel_pytree
 from scipy.optimize import minimize
 
+import utils
 from fax import converge
 from fax import math
 from fax.competitive import cg
@@ -137,7 +139,7 @@ def implicit_ecp(
     )
 
 
-def make_lagrangian(func: Callable[[ConstrainedParameters], Tuple[float, Batch]], equality_constraints):
+def make_lagrangian(func: Callable[[ConstrainedParameters, Batch], float], equality_constraints):
     """Make a Lagrangian function from an objective function `func` and `equality_constraints`
 
     Args:
@@ -148,20 +150,22 @@ def make_lagrangian(func: Callable[[ConstrainedParameters], Tuple[float, Batch]]
         tuple: Triple of callables (init_multipliers, lagrangian, get_params)
     """
 
-    def init_multipliers(params, *args, **kwargs):
-        h, _batch = jax.eval_shape(equality_constraints, params, *args, **kwargs)
-        multipliers = tree_util.tree_map(lambda x: np.zeros(x.shape, x.dtype), h)
-        return params, multipliers
+    def init_multipliers(params: ConstrainedParameters, *args, **kwargs):
+        params = utils.LagrangianParameters(params, None)
+        h = jax.eval_shape(equality_constraints, params, *args, **kwargs)
+        multipliers = utils.tree_zero_like(h)
+        return utils.LagrangianParameters(params.constr_params, multipliers)
 
-    def lagrangian(params, multipliers):
-        loss, batch = func(params)
-        h, _batch = equality_constraints(params, batch)
-        indices = batch.indices
+    def lagrangian(params, batch):
+        loss = func(params, batch)
+        h = equality_constraints(params, batch)
         rhs = []
 
-        for mi, hi in zip(multipliers, h):
-            rhs.append(math.pytree_dot(mi[indices, :], hi))
-        return loss + np.sum(rhs)
+        for mi, hi in zip(params.multipliers, h):
+            rhs.append(math.pytree_dot(mi[batch.indices, :], hi))
+
+        warnings.warn("no constr")
+        return loss + jax.lax.stop_gradient(np.sum(np.hstack(rhs)))
 
     def get_params(opt_state):
         return opt_state[0]

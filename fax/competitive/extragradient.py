@@ -4,6 +4,7 @@ import jax.experimental.optimizers
 from jax import numpy as np
 from jax import tree_util, lax
 
+import utils
 from utils import LagrangianParameters
 
 
@@ -127,19 +128,18 @@ def adam_extragradient_optimizer(step_sizes, betas=(0.5, 0.99), weight_norm=0.0,
     step_size_y = jax.experimental.optimizers.make_schedule(step_size_y)
 
     def init(init_values):
-        exp_avg = tree_util.tree_map(lambda x: np.zeros(x.shape, x.dtype), init_values)
-        exp_avg_sq = tree_util.tree_map(lambda x: np.zeros(x.shape, x.dtype), init_values)
-
+        exp_avg = utils.tree_zero_like(init_values)
+        exp_avg_sq = utils.tree_zero_like(init_values)
         return init_values, (exp_avg, exp_avg_sq)
 
-    def update(step, grad_fns, state):
+    def update(step, grad_fns, state, batch):
         (x0, y0), grad_state = state
         step_sizes = step_size_x(step), step_size_y(step)
 
         if use_adam:
             (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, x0, y0, step, weight_norm)
         else:
-            (delta_x, delta_y) = sgd_step(step_sizes, grad_fns, x0, y0, weight_norm, grad_clip)
+            (delta_x, delta_y) = sgd_step(step_sizes, grad_fns, x0, y0, weight_norm, grad_clip, batch)
 
         xbar = sub(x0, delta_x)
         ybar = add(y0, delta_y)
@@ -147,7 +147,7 @@ def adam_extragradient_optimizer(step_sizes, betas=(0.5, 0.99), weight_norm=0.0,
         if use_adam:
             (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, xbar, ybar, step, weight_norm)
         else:
-            (delta_x, delta_y) = sgd_step(step_sizes, grad_fns, xbar, ybar, weight_norm, grad_clip)
+            (delta_x, delta_y) = sgd_step(step_sizes, grad_fns, xbar, ybar, weight_norm, grad_clip, batch)
 
         x1 = sub(x0, delta_x)
         y1 = add(y0, delta_y)
@@ -190,11 +190,12 @@ def adam_step(betas, eps, step_sizes, grads_fn, grad_state, x, y, step, weight_n
     return delta, grad_state
 
 
-def sgd_step(step_sizes, grads_fn, x, y, weight_norm, grad_clip):
-    grads = grads_fn(x, y)
+def sgd_step(step_sizes, grads_fn, x, y, weight_norm, grad_clip, batch):
+    grads = grads_fn(utils.LagrangianParameters(x, y), batch)
     if grad_clip:
         grads = jax.experimental.optimizers.clip_grads(grads, grad_clip)
-    gx, gy = grads
-    grads = (gx + multiply_constant(weight_norm)(x), gy)
+    if weight_norm:
+        gx, gy = grads
+        grads = (gx + multiply_constant(weight_norm)(x), gy)
     delta = multiply_constant(step_sizes[0])(grads[0]), multiply_constant(step_sizes[1])(grads[1])
     return delta
