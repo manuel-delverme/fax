@@ -1,7 +1,6 @@
 """ Optimization methods for parametric nonlinear equality constrained problems.
 """
 import collections
-import warnings
 from typing import Callable
 
 import jax
@@ -164,8 +163,7 @@ def make_lagrangian(func: Callable[[ConstrainedParameters, Batch], float], equal
         for mi, hi in zip(params.multipliers, h):
             rhs.append(math.pytree_dot(mi[batch.indices, :], hi))
 
-        warnings.warn("no constr")
-        return loss + jax.lax.stop_gradient(np.sum(np.hstack(rhs)))
+        return loss + np.sum(np.hstack(rhs))
 
     def get_params(opt_state):
         return opt_state[0]

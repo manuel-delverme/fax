@@ -123,7 +123,8 @@ def adam_extragradient_optimizer(step_sizes, betas=(0.5, 0.99), weight_norm=0.0,
 
     """
 
-    step_size_x, step_size_y = step_sizes
+    step_size_p, step_size_x, step_size_y = step_sizes
+    step_size_p = jax.experimental.optimizers.make_schedule(step_size_p)
     step_size_x = jax.experimental.optimizers.make_schedule(step_size_x)
     step_size_y = jax.experimental.optimizers.make_schedule(step_size_y)
 
@@ -134,7 +135,7 @@ def adam_extragradient_optimizer(step_sizes, betas=(0.5, 0.99), weight_norm=0.0,
 
     def update(step, grad_fns, state, batch):
         (x0, y0), grad_state = state
-        step_sizes = step_size_x(step), step_size_y(step)
+        step_sizes = step_size_p(step), step_size_x(step), step_size_y(step)
 
         if use_adam:
             (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, x0, y0, step, weight_norm)
@@ -197,5 +198,8 @@ def sgd_step(step_sizes, grads_fn, x, y, weight_norm, grad_clip, batch):
     if weight_norm:
         gx, gy = grads
         grads = (gx + multiply_constant(weight_norm)(x), gy)
-    delta = multiply_constant(step_sizes[0])(grads[0]), multiply_constant(step_sizes[1])(grads[1])
+    delta0 = multiply_constant(step_sizes[0])(grads[0][0]), multiply_constant(step_sizes[1])(grads[0][1])
+    delta0 = grads[0].__class__(*delta0)
+    delta = delta0, multiply_constant(step_sizes[2])(grads[1])
+    delta = grads.__class__(*delta)
     return delta
