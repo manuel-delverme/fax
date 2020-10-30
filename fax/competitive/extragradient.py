@@ -201,5 +201,5 @@ def sgd_step(step_sizes, grads_fn, x, y, weight_norm, grad_clip, batch):
     delta0 = multiply_constant(step_sizes[0])(grads[0][0]), multiply_constant(step_sizes[1])(grads[0][1])
     delta0 = grads[0].__class__(*delta0)
     delta = delta0, multiply_constant(step_sizes[2])(grads[1])
-    delta = grads.__class__(*delta)
+    delta = utils.LagrangianParameters(*delta)
     return delta
