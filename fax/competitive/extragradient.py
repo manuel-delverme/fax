@@ -1,11 +1,10 @@
 from typing import Callable
 
 import jax.experimental.optimizers
+from fax import utils
+from fax.utils import LagrangianParameters
 from jax import numpy as np
 from jax import tree_util, lax
-
-import utils
-from utils import LagrangianParameters
 
 
 def division_constant(constant):

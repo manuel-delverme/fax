@@ -5,6 +5,15 @@ from typing import Callable
 
 import jax
 import jax.numpy as np
+from fax import converge
+from fax import math
+from fax import utils
+from fax.competitive import cg
+from fax.competitive import cga
+from fax.implicit.twophase import make_adjoint_fixed_point_iteration
+from fax.implicit.twophase import make_forward_fixed_point_iteration
+from fax.loop import fixed_point_iteration
+from fax.utils import ConstrainedParameters, Batch
 from jax import grad
 from jax import jacrev
 from jax import jit
@@ -13,16 +22,6 @@ from jax import tree_util
 from jax.experimental import optimizers
 from jax.flatten_util import ravel_pytree
 from scipy.optimize import minimize
-
-import utils
-from fax import converge
-from fax import math
-from fax.competitive import cg
-from fax.competitive import cga
-from fax.implicit.twophase import make_adjoint_fixed_point_iteration
-from fax.implicit.twophase import make_forward_fixed_point_iteration
-from fax.loop import fixed_point_iteration
-from utils import ConstrainedParameters, Batch
 
 ConstrainedSolution = collections.namedtuple(
     "ConstrainedSolution",
