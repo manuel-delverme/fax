@@ -1,10 +1,11 @@
 from typing import Callable
 
 import jax.experimental.optimizers
-from fax import utils
-from fax.utils import LagrangianParameters
 from jax import numpy as np
 from jax import tree_util, lax
+
+from fax import utils
+from fax.utils import LagrangianParameters
 
 
 def division_constant(constant):
@@ -128,30 +129,33 @@ def adam_extragradient_optimizer(step_sizes, betas=(0.5, 0.99), weight_norm=0.0,
     step_size_y = jax.experimental.optimizers.make_schedule(step_size_y)
 
     def init(init_values):
-        exp_avg = utils.tree_zero_like(init_values)
-        exp_avg_sq = utils.tree_zero_like(init_values)
-        return init_values, (exp_avg, exp_avg_sq)
+        if use_adam:
+            exp_avg = utils.tree_zero_like(init_values)
+            exp_avg_sq = utils.tree_zero_like(init_values)
+            return init_values, (exp_avg, exp_avg_sq)
+        else:
+            return init_values, None
 
     def update(step, grad_fns, state, batch):
         (x0, y0), grad_state = state
         step_sizes = step_size_p(step), step_size_x(step), step_size_y(step)
 
-        if use_adam:
-            (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, x0, y0, step, weight_norm)
-        else:
-            (delta_x, delta_y) = sgd_step(step_sizes, grad_fns, x0, y0, weight_norm, grad_clip, batch)
+        grad_state, xbar, ybar = half_step(batch, grad_fns, grad_state, step, step_sizes, x0, x0, y0, y0)
+        grad_state, x1, y1 = half_step(batch, grad_fns, grad_state, step, step_sizes, x0, xbar, y0, ybar)
+        return (x1, y1), grad_state
 
-        xbar = sub(x0, delta_x)
-        ybar = add(y0, delta_y)
-
+    def half_step(batch, grad_fns, grad_state, step, step_sizes, x0, xbar, y0, ybar):
         if use_adam:
             (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, xbar, ybar, step, weight_norm)
         else:
             (delta_x, delta_y) = sgd_step(step_sizes, grad_fns, xbar, ybar, weight_norm, grad_clip, batch)
-
+        del xbar
+        del ybar
         x1 = sub(x0, delta_x)
         y1 = add(y0, delta_y)
-        return (x1, y1), grad_state
+        del delta_x
+        del delta_y
+        return grad_state, x1, y1
 
     def get_params(state):
         x, _opt_state = state
