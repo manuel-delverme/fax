@@ -125,3 +125,4 @@ venv.bak/
 Elephant/README.md
 Elephant/approximate_house.py
 Elephant/elephant.py
+plots/local_optim.gif
