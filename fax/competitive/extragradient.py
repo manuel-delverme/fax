@@ -146,7 +146,7 @@ def adam_extragradient_optimizer(step_sizes, betas=(0.5, 0.99), weight_norm=0.0,
 
     def half_step(batch, grad_fns, grad_state, step, step_sizes, x0, xbar, y0, ybar):
         if use_adam:
-            (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, xbar, ybar, step, weight_norm)
+            (delta_x, delta_y), grad_state = adam_step(betas, eps, step_sizes, grad_fns, grad_state, xbar, ybar, step, weight_norm, grad_clip, batch)
         else:
             (delta_x, delta_y) = sgd_step(step_sizes, grad_fns, xbar, ybar, weight_norm, grad_clip, batch)
         del xbar
@@ -164,12 +164,16 @@ def adam_extragradient_optimizer(step_sizes, betas=(0.5, 0.99), weight_norm=0.0,
     return init, update, get_params
 
 
-def adam_step(betas, eps, step_sizes, grads_fn, grad_state, x, y, step, weight_norm):
-    raise NotImplemented("gradient clipping missing")
+def adam_step(betas, eps, step_sizes, grads_fn, grad_state, x, y, step, weight_norm, grad_clip, batch):
     exp_avg, exp_avg_sq = grad_state
     beta1, beta2 = betas
-    (gx, gy) = grads_fn(x, y)
-    grads = (gx + multiply_constant(weight_norm)(x), gy)
+    grads = grads_fn(utils.LagrangianParameters(x, y), batch)
+
+    if grad_clip:
+        grads = jax.experimental.optimizers.clip_grads(grads, grad_clip)
+    if weight_norm:
+        gx, gy = grads
+        grads = (gx + multiply_constant(weight_norm)(x), gy)
 
     bias_correction1 = 1 - beta1 ** (step + 1)
     bias_correction2 = 1 - beta2 ** (step + 1)
@@ -188,7 +192,12 @@ def adam_step(betas, eps, step_sizes, grads_fn, grad_state, x, y, step, weight_n
 
     denom = tree_util.tree_multimap(lambda _var: np.sqrt(_var) + eps, corrected_second_moment)
     step_improvement = division(corrected_moment, denom)
-    delta = multiply_constant(step_sizes[0])(step_improvement[0]), multiply_constant(step_sizes[1])(step_improvement[1])
+
+    delta_p = multiply_constant(step_sizes[0])(step_improvement.constr_params.theta)
+    delta_x = multiply_constant(step_sizes[1])(step_improvement.constr_params.x)
+    delta_y = multiply_constant(step_sizes[2])(step_improvement.multipliers)
+
+    delta = utils.LagrangianParameters(utils.ConstrainedParameters(delta_p, delta_x), delta_y)
 
     grad_state = exp_avg, exp_avg_sq
     return delta, grad_state
