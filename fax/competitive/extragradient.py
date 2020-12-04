@@ -173,7 +173,7 @@ def adam_step(betas, eps, step_sizes, grads_fn, grad_state, x, y, step, weight_n
         grads = jax.experimental.optimizers.clip_grads(grads, grad_clip)
     if weight_norm:
         gx, gy = grads
-        grads = (gx + multiply_constant(weight_norm)(x), gy)
+        grads = utils.LagrangianParameters(gx + multiply_constant(weight_norm)(grads.constr_params), grads.multipliers)
 
     bias_correction1 = 1 - beta1 ** (step + 1)
     bias_correction2 = 1 - beta2 ** (step + 1)
